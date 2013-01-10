@@ -1,8 +1,26 @@
 #!/bin/bash
 
+echo "[>>] Creating a RAID array from given disks."
+echo "[>>] Script assumes nothing about devices, and will reformat each drive."
+echo "[>>] Back up any data before using disks to create array."
+
 # No arguments passed, tell user how to run this
 if [ $# -eq 0 ]; then
-	echo "Script usage: $0 <space-separated list of devices to create RAID with>"
+	DEVS=()
+
+	echo "[>>] To skip the prompt for entering devices, please provide them as an argument"
+
+	while IFS=  read -r -p "[..] Enter device (and/or partition), leave empty to finish list: " tmp; do
+		[[ $tmp ]] || break
+		DEVS+=("$tmp")
+	done
+else
+	# Gets all the arguments after $0 and stores it in array
+	DEVS=("${@}")
+fi
+
+if [ ${#DEVS[@]} -eq 0 ]; then
+	echo "[>>] No drives provided.  Exiting..."
 	exit 1
 fi
 
@@ -19,10 +37,7 @@ endspin() {
 }
 ## /BLOCK
 
-# Gets all the arguments after $0 and stores it in array
-DEVS=("${@}")
-
-echo "Running RAID configuration on the following devices: ${DEVS[@]}"
+echo "[>>] Running RAID configuration on the following devices: ${DEVS[@]}"
 
 # Loop through each device the user gave
 for dev in "${DEVS[@]}"; do
@@ -66,19 +81,22 @@ for dev in "${DEVS[@]}"; do
 done
 
 # Get the RAID ID (/dev/md#)
-read -p "RAID ID (!NOT! level; this will be /dev/md#): " RAIDID
+read -p "[..] RAID ID (!NOT! level; this will be /dev/md#): " RAIDID
 
 # The RAID level (TODO: error checking of device amount compared to requirement of level)
-read -p "RAID Level (0,1,5,6,10): " RAIDLEVEL
 
-echo -n "Generating RAID..."
+# - Get RAID levels supported
+LEVELS=$(cat /proc/mdstat | grep "Personalities" | awk -F':' '{print $2}' | sed 's/^[ \t]*//;s/[ \t]*$//;s/[\[]*//g;s/[]]*//g;s/\s/, /g;s/raid//g')
+read -p "[..] RAID Level ($LEVELS): " RAIDLEVEL
+
+echo -n "[>>] Generating RAID..."
 # Similar to the formatting line in the while loop, but instead we tell mdadm that we are to create the array
 echo "yes
 " | mdadm --create /dev/md$RAIDID --level=$RAIDLEVEL --metadata=1.2 --raid-devices=${#DEVS[@]} ${DEVS[@]} > /dev/null 2>&1
 echo "done."
 
 # Temp holder so while loop works initially
-check="Resync Status"
+check="working"
 
 # While $check is not empty...
 while [ ! -z "$check" ]; do
@@ -87,27 +105,41 @@ while [ ! -z "$check" ]; do
 
 	# Show it in our own special progress bar-ish way
 	# "\r" moves to beginning of line since there is no newline char ("\n")
-	echo -ne "Progress of RAID build: $check\r"
+	echo -ne "[..] Progress of RAID build: $check\r"
 
 	sleep 1
 done
 
-echo -ne "Progress of RAID build: 100% complete"
+echo -ne "[>>] Progress of RAID build: 100%"
 echo -ne "\n"
 
 # Generate a mdadm.conf line and import it into file
-echo -n "Generating /etc/mdadm/mdadm.conf file..."
+echo -n "[>>] Generating /etc/mdadm/mdadm.conf file..."
 mdadm --examine --scan > /etc/mdadm/mdadm.conf
 echo "done."
 
 # Essentially tells mdadm to make the new RAID usable
-echo -n "Assembling RAID for use..."
+echo -n "[>>] Assembling RAID for use..."
 mdadm --assemble --scan > /dev/null 2>&1
 echo "done."
 
-echo "RAID array has been created at /dev/md$RAIDID at level $RAIDLEVEL"
+echo "[>>] RAID array has been created at /dev/md$RAIDID at level $RAIDLEVEL"
 
-echo -n "Creating partition for RAID..."
+echo -n "[>>] Creating partition for RAID..."
 (echo o; echo n; echo p; echo 1; echo ; echo ; echo; echo t; echo 83; echo w) | fdisk /dev/md$RAIDID > /dev/null 2>&1
 mkfs.ext4 /dev/md${RAIDID}p1 > /dev/null 2>&1
 echo "done."
+
+read -p "[..] Enter mount point for /dev/md${RAIDID}p1 (leave empty to not mount): " mount
+
+if [ -n "$mount" ]; then
+	echo "[>>] Mounting RAID array to $mount..."
+
+	if [ ! -d "$mount" ]; then
+		echo "[!!] $mount does not exist, creating..."
+		mkdir -p "$mount"
+	fi
+
+	mount /dev/md${RAIDID}p1 "$mount" > /dev/null 2>&1
+	echo "[>>] /dev/md${RAIDID}p1 has been mounted to $mount"
+fi
