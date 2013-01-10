@@ -106,3 +106,8 @@ mdadm --assemble --scan > /dev/null 2>&1
 echo "done."
 
 echo "RAID array has been created at /dev/md$RAIDID at level $RAIDLEVEL"
+
+echo -n "Creating partition for RAID..."
+(echo o; echo n; echo p; echo 1; echo ; echo ; echo; echo t; echo 83; echo w) | fdisk /dev/md$RAIDID > /dev/null 2>&1
+mkfs.ext4 /dev/md${RAIDID}p1 > /dev/null 2>&1
+echo "done."
