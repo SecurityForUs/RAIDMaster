@@ -1,12 +1,11 @@
 #!/bin/bash
 
-if [ $# -eq 0 ]; then
-	echo "Script usage: $0 <absolute path to RAID device [i.e.: /dev/md0]>"
-	exit 1
-fi
-
 # Get the RAID device to remove
-RAID=$1
+if [ $# -eq 0 ]; then
+	read -r -p "Enter device to remove: " RAID
+else
+	RAID=$1
+fi
 
 # Checks to see if the device is present
 DETECT=$(fdisk -l $RAID | grep -v "partition table")

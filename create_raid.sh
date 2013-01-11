@@ -29,7 +29,7 @@ fi
 sp="/-\|"
 sc=0
 spin() {
-	printf "\b${sp:sc++:1}"
+	printf "${sp:sc++:1}"
 	((sc==${#sp})) && sc=0
 }
 endspin() {
@@ -37,7 +37,8 @@ endspin() {
 }
 ## /BLOCK
 
-echo "[>>] Running RAID configuration on the following devices: ${DEVS[@]}"
+echo "[>>] Running RAID configuration on the following devices:"
+echo "     ${DEVS[@]}"
 
 # Loop through each device the user gave
 for dev in "${DEVS[@]}"; do
@@ -81,7 +82,15 @@ for dev in "${DEVS[@]}"; do
 done
 
 # Get the RAID ID (/dev/md#)
-read -p "[..] RAID ID (!NOT! level; this will be /dev/md#): " RAIDID
+RAIDID=""
+
+while [ "$RAIDID" == "" ]; do
+	read -p "[..] RAID ID (!NOT! level; this will be /dev/md#): " RAIDID
+
+	if [ -d "/dev/md$RAIDID" ]; then
+		echo "[!!] /dev/md$RAIDID exists!  Please choose a different ID."
+	fi
+done
 
 # The RAID level (TODO: error checking of device amount compared to requirement of level)
 
@@ -89,7 +98,7 @@ read -p "[..] RAID ID (!NOT! level; this will be /dev/md#): " RAIDID
 LEVELS=$(cat /proc/mdstat | grep "Personalities" | awk -F':' '{print $2}' | sed 's/^[ \t]*//;s/[ \t]*$//;s/[\[]*//g;s/[]]*//g;s/\s/, /g;s/raid//g')
 read -p "[..] RAID Level ($LEVELS): " RAIDLEVEL
 
-echo -n "[>>] Generating RAID..."
+echo -n "[>>] Generating RAID on /dev/md$RAIDID..."
 # Similar to the formatting line in the while loop, but instead we tell mdadm that we are to create the array
 echo "yes
 " | mdadm --create /dev/md$RAIDID --level=$RAIDLEVEL --metadata=1.2 --raid-devices=${#DEVS[@]} ${DEVS[@]} > /dev/null 2>&1
@@ -105,7 +114,7 @@ while [ ! -z "$check" ]; do
 
 	# Show it in our own special progress bar-ish way
 	# "\r" moves to beginning of line since there is no newline char ("\n")
-	echo -ne "[..] Progress of RAID build: $check\r"
+	echo -ne "[>>] Progress of RAID build: $check\r"
 
 	sleep 1
 done
